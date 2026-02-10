@@ -9,6 +9,10 @@
 !dremio-export/
 !dremio-export/**
 
+# Allow commands directory
+!commands/
+!commands/**
+
 # Exclude junk files within allowed directories
 .DS_Store
 __pycache__/
