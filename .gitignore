@@ -8,8 +8,6 @@
 # Allow custom skill directories
 !dremio-export/
 !dremio-export/**
-!sync-skills/
-!sync-skills/**
 
 # Exclude junk files within allowed directories
 .DS_Store
