@@ -7,43 +7,75 @@ allowed-tools: [Bash, Read, Write, Glob, Grep]
 
 Deploy all custom (non-symlinked) skills from `~/.claude/skills/` and all command files from `~/.claude/commands/` to a public GitHub repository called `claude-skills`.
 
+The GitHub repo uses a structured layout: skills go under `skills/`, commands go under `commands/`.
+
+## Important: Temp Clone Approach
+
+Do NOT create a git repo inside `~/.claude/skills/`. Instead, always use a temporary clone directory for git operations. This keeps the local `~/.claude/skills/` directory clean and avoids structure mismatches (local is flat, GitHub has `skills/` subfolder).
+
 ## Instructions
 
-Execute the following steps in order. Use Bash for all commands. The git repo lives at `~/.claude/skills/`.
+Execute the following steps in order. Use Bash for all commands.
 
-### Step 1: Check prerequisites
+### Step 1: Detect OS and find `gh` CLI
 
-1. Check if `gh` CLI is installed: `command -v gh`
-   - If not installed, run: `brew install gh`
-   - If `brew` is also not installed, tell the user to install Homebrew first and stop
-2. Check if `gh` is authenticated: `gh auth status`
-   - If not authenticated, tell the user to run `gh auth login` and stop
-3. Get the GitHub username: `gh api user --jq '.login'`
-
-### Step 2: Initialize git repo
-
-1. Check if `~/.claude/skills/.git` exists
-2. If not, run:
+1. Detect the OS:
    ```
-   git -C ~/.claude/skills init
-   git -C ~/.claude/skills branch -M main
+   uname -s
    ```
+   - `MINGW*` or `MSYS*` = Windows (Git Bash)
+   - `Darwin` = macOS
+   - `Linux` = Linux
 
-### Step 3: Setup GitHub remote
+2. Find `gh` CLI — try these in order:
+   ```
+   command -v gh 2>/dev/null
+   ```
+   - If found, use it directly
+   - If NOT found on **Windows**: check `/tmp/gh/bin/gh.exe`. If that also doesn't exist, download the portable version:
+     ```
+     curl -sL https://github.com/cli/cli/releases/latest/download/gh_<VERSION>_windows_amd64.zip -o /tmp/gh.zip
+     unzip -o /tmp/gh.zip -d /tmp/gh
+     ```
+     Then use `/tmp/gh/bin/gh.exe` as the `gh` command for all subsequent steps.
+     To find the latest version, run: `curl -sI https://github.com/cli/cli/releases/latest | grep -i location | grep -oP 'v[\d.]+'` or hardcode a recent version.
+   - If NOT found on **macOS**: run `brew install gh` (if `brew` not available, tell the user to install Homebrew and stop)
+   - If NOT found on **Linux**: tell the user to install `gh` via their package manager and stop
 
-1. Check if origin remote exists: `git -C ~/.claude/skills remote get-url origin 2>/dev/null`
-2. If no remote:
-   - Check if repo already exists on GitHub: `gh repo view <username>/claude-skills 2>/dev/null`
-   - If repo does not exist, create it: `gh repo create claude-skills --public --description "Custom Claude Code skills and commands" --clone=false`
-   - Add the remote: `git -C ~/.claude/skills remote add origin https://github.com/<username>/claude-skills.git`
+3. Store the working `gh` path in a variable (e.g., `GH_CMD`) for all subsequent steps.
 
-### Step 4: Find custom skills and commands
+4. Check authentication: `$GH_CMD auth status`
+   - If not authenticated, tell the user the full path to run `gh auth login` (use `cygpath -w` on Windows to show the Windows path) and stop
+
+5. Get the GitHub username: `$GH_CMD api user --jq '.login'`
+
+### Step 2: Setup temp working directory
+
+1. Set a temp directory path:
+   - Use `/tmp/claude-skills-deploy` (works on all platforms via Git Bash on Windows)
+2. If the temp dir already exists, remove it: `rm -rf /tmp/claude-skills-deploy`
+3. Check if the repo exists on GitHub: `$GH_CMD repo view <username>/claude-skills 2>/dev/null`
+   - If it exists: clone it:
+     ```
+     git clone https://github.com/<username>/claude-skills.git /tmp/claude-skills-deploy
+     ```
+   - If it does NOT exist: create the repo and clone it:
+     ```
+     $GH_CMD repo create claude-skills --public --description "Custom Claude Code skills and commands" --clone=false
+     git init /tmp/claude-skills-deploy
+     git -C /tmp/claude-skills-deploy branch -M main
+     git -C /tmp/claude-skills-deploy remote add origin https://github.com/<username>/claude-skills.git
+     ```
+
+### Step 3: Find custom skills and commands locally
 
 **Skills:** Find all directories in `~/.claude/skills/` that are real directories (NOT symlinks):
 
 ```
-find ~/.claude/skills -maxdepth 1 -mindepth 1 -type d ! -type l -not -name '.git' -not -name 'commands' -exec basename {} \;
+find ~/.claude/skills -maxdepth 1 -mindepth 1 -type d ! -type l -not -name '.git' -not -name 'commands' -not -name 'skills' -exec basename {} \;
 ```
+
+Note: Also exclude `skills` directory itself (it may exist as a leftover from old git tracking).
 
 **Commands:** Find all `.md` files in `~/.claude/commands/`:
 
@@ -53,68 +85,68 @@ find ~/.claude/commands -maxdepth 1 -name '*.md' -exec basename {} \;
 
 If no custom skills AND no commands are found, report "Nothing to deploy" and stop.
 
-### Step 5: Copy commands into repo
+### Step 4: Sync files to temp repo
 
-Copy command files from `~/.claude/commands/` into the repo so they can be tracked by git:
+1. Create the target directories in the temp repo:
+   ```
+   mkdir -p /tmp/claude-skills-deploy/skills
+   mkdir -p /tmp/claude-skills-deploy/commands
+   ```
 
-1. Create the directory: `mkdir -p ~/.claude/skills/commands`
-2. Copy all `.md` files: `cp ~/.claude/commands/*.md ~/.claude/skills/commands/`
+2. **Clean old skills from temp repo** (to handle deletions):
+   ```
+   rm -rf /tmp/claude-skills-deploy/skills/*/
+   ```
 
-### Step 6: Generate .gitignore
+3. **Copy each skill directory** into the `skills/` subfolder:
+   ```
+   cp -r ~/.claude/skills/<skill-name> /tmp/claude-skills-deploy/skills/
+   ```
+   Do this for EACH skill found in Step 3.
 
-Write a `.gitignore` file at `~/.claude/skills/.gitignore` using a whitelist approach:
+4. **Copy command files** into the `commands/` subfolder:
+   ```
+   cp ~/.claude/commands/*.md /tmp/claude-skills-deploy/commands/
+   ```
+
+### Step 5: Generate .gitignore
+
+Write a `.gitignore` file at `/tmp/claude-skills-deploy/.gitignore`:
 
 ```
 # Auto-generated by /deploy-skills
-# Ignore everything by default
-*
-
-# Allow .gitignore itself
-!.gitignore
-
-# Allow custom skill directories
-!<skill-name>/
-!<skill-name>/**
-
-# Allow commands directory
-!commands/
-!commands/**
-```
-
-Add an entry pair (`!name/` and `!name/**`) for EACH custom skill found in Step 4. The `commands/` entries should always be included when there are command files.
-
-Then append these exclusions at the end:
-
-```
-
-# Exclude junk files within allowed directories
+# Ignore junk files
 .DS_Store
+Thumbs.db
 __pycache__/
 *.pyc
 .env
 *.env
 ```
 
-### Step 7: Stage and commit
+Note: Since we use a dedicated temp repo (not mixed with local files), a simple exclusion-based `.gitignore` is sufficient — no whitelist needed.
 
-1. Stage the gitignore: `git -C ~/.claude/skills add .gitignore`
-2. Stage each custom skill: `git -C ~/.claude/skills add <skill-name>/` for each one
-3. Stage the commands directory: `git -C ~/.claude/skills add commands/`
-4. Stage deletions of removed skills/commands: `git -C ~/.claude/skills add -u`
-5. Check if there are staged changes: `git -C ~/.claude/skills diff --cached --quiet`
-   - If no changes, report "Everything is already up to date" and stop
-6. Commit: `git -C ~/.claude/skills commit -m "Deploy skills & commands - <YYYY-MM-DD HH:MM:SS>"`
+### Step 6: Stage and commit
 
-### Step 8: Push to GitHub
+1. Stage everything: `git -C /tmp/claude-skills-deploy add -A`
+2. Check if there are staged changes: `git -C /tmp/claude-skills-deploy diff --cached --quiet`
+   - If no changes, clean up temp dir and report "Everything is already up to date" and stop
+3. Commit:
+   ```
+   git -C /tmp/claude-skills-deploy commit -m "Deploy skills & commands - <YYYY-MM-DD HH:MM:SS>"
+   ```
 
-1. Check if `origin/main` exists: `git -C ~/.claude/skills rev-parse --verify origin/main 2>/dev/null`
-   - If it does NOT exist (first push): `git -C ~/.claude/skills push -u origin main`
-   - If it exists: `git -C ~/.claude/skills push origin main`
+### Step 7: Push to GitHub
 
-### Step 9: Report results
+1. Check if `origin/main` exists: `git -C /tmp/claude-skills-deploy rev-parse --verify origin/main 2>/dev/null`
+   - If it does NOT exist (first push): `git -C /tmp/claude-skills-deploy push -u origin main`
+   - If it exists: `git -C /tmp/claude-skills-deploy push origin main`
 
-Tell the user:
-- Which custom skills were deployed (list them)
-- Which commands were deployed (list them)
-- The GitHub repository URL: `https://github.com/<username>/claude-skills`
-- Whether changes were pushed or everything was already up to date
+### Step 8: Clean up and report results
+
+1. Remove the temp directory: `rm -rf /tmp/claude-skills-deploy`
+2. Tell the user:
+   - Which custom skills were deployed (list them)
+   - Which commands were deployed (list them)
+   - The GitHub repository URL: `https://github.com/<username>/claude-skills`
+   - Whether changes were pushed or everything was already up to date
