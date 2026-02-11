@@ -1,0 +1,45 @@
+# SQL Server View Export Configuration Template
+# Copy this file to .env and fill in your SQL Server connection details
+
+# SQL Server connection settings
+SQL_SERVER=localhost
+SQL_DATABASE=MyDatabase
+SQL_USER=sa
+SQL_PASSWORD=YourPassword
+
+# Optional settings
+SQL_PORT=1433
+TRUST_SERVER_CERTIFICATE=Yes
+
+# Output directory for CSV exports (relative or absolute path)
+OUTPUT_DIR=./exports
+
+# ===================================================================
+# CONFIGURATION NOTES
+# ===================================================================
+
+# SQL_SERVER:
+#   - Can be hostname, IP address, or hostname\instance
+#   - Examples: localhost, 192.168.1.100, myserver\SQLEXPRESS
+#   - For named instances: myserver\INSTANCENAME
+
+# SQL_DATABASE:
+#   - The database name you want to connect to
+#   - The tool will list views from this database
+
+# SQL_USER and SQL_PASSWORD:
+#   - SQL Server authentication credentials
+#   - For Windows authentication, additional configuration is needed
+
+# SQL_PORT:
+#   - Default is 1433 (standard SQL Server port)
+#   - For named instances, SQL Server uses dynamic ports
+
+# TRUST_SERVER_CERTIFICATE:
+#   - Set to "Yes" for self-signed certificates (common in development)
+#   - Set to "No" for production environments with valid certificates
+
+# OUTPUT_DIR:
+#   - Directory where CSV files will be saved
+#   - Created automatically if it doesn't exist
+#   - Can be relative (./exports) or absolute (C:\exports)
